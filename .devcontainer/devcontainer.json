@@ -1,0 +1,26 @@
+{
+    "name": "PCL Extension (Node)",
+    "image": "node:18-bullseye-slim",
+    "remoteUser": "node",
+    "updateRemoteUserUID": false,
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+    // Dev Containers Features に Git を追加
+    "features": {
+      "ghcr.io/devcontainers/features/git:1": {},
+      "ghcr.io/devcontainers/features/common-utils:1": {}
+    },
+
+    "postCreateCommand": "[ -f package.json ] && npm install || echo 'skip npm install'",
+
+    "customizations": {
+      "vscode": {
+        "extensions": [
+          "dbaeumer.vscode-eslint",
+          "esbenp.prettier-vscode"
+        ]
+      }
+    }
+  }
+  
