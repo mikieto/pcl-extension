@@ -2,3 +2,5 @@ streamlit
 supabase
 google-generativeai
 streamlit-supabase-auth
+panda
+cryptography
