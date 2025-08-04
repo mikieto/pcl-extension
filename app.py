@@ -30,7 +30,7 @@ try:
     genai.configure(api_key=st.secrets.gemini.api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error(f"Could not connect to services. Please check your secrets.toml file. Error: {e}")
+    st.error(f"Could not connect to services: {e}")
     st.stop()
 
 # --- Encryption Helper Functions ---
@@ -98,7 +98,6 @@ else:
     user_id = session.user.id
     user_email = session.user.email
     
-    # Re-authenticate the client on every script run
     supabase.auth.set_session(session.session.access_token, session.session.refresh_token)
 
     # --- Helper Functions ---
@@ -113,11 +112,9 @@ else:
             st.error(f"Failed to save message: {e}")
 
     def load_conversations(user_id, key):
-        """Fetches, decrypts, and previews the most recent message from each conversation."""
         try:
             response = supabase.table("l4_records_messages").select("conversation_id, content, created_at").eq("user_id", user_id).order("created_at", desc=True).execute()
-            if not response.data:
-                return []
+            if not response.data: return []
             df = pd.DataFrame(response.data)
             unique_convs = df.drop_duplicates(subset=['conversation_id']).copy()
             previews = []
@@ -127,17 +124,13 @@ else:
                     preview_text = decrypted_content[:40] + '...'
                 except Exception:
                     preview_text = '[Encrypted Data]'
-                previews.append({
-                    'conversation_id': row['conversation_id'],
-                    'preview': preview_text
-                })
+                previews.append({'conversation_id': row['conversation_id'], 'preview': preview_text})
             return previews
         except Exception as e:
             st.error(f"Failed to load conversations: {e}")
             return []
 
     def load_messages_for_conversation(conversation_id, key):
-        """Fetches and decrypts all messages for a selected conversation."""
         try:
             response = supabase.table("l4_records_messages").select("role, content").eq("conversation_id", conversation_id).order("created_at", desc=False).execute()
             decrypted_messages = []
@@ -153,7 +146,6 @@ else:
             return []
     
     def save_language_preference(lang_code):
-        """Saves the language preference to Supabase user_metadata."""
         try:
             supabase.auth.update_user({"data": {"language_preference": lang_code}})
         except Exception as e:
@@ -162,24 +154,14 @@ else:
     # --- Sidebar ---
     with st.sidebar:
         st.write(f"Welcome {user_email}")
-        
         lang_map = {"English": "en", "日本語": "ja"}
         lang_name_list = list(lang_map.keys())
         current_lang_index = lang_name_list.index("日本語") if st.session_state.language == "ja" else 0
-
         def on_lang_change():
             selected_lang_code = lang_map[st.session_state.lang_selector]
             st.session_state.language = selected_lang_code
             save_language_preference(selected_lang_code)
-
-        st.selectbox(
-            "Language",
-            options=lang_name_list,
-            index=current_lang_index,
-            key="lang_selector",
-            on_change=on_lang_change
-        )
-        
+        st.selectbox("Language", options=lang_name_list, index=current_lang_index, key="lang_selector", on_change=on_lang_change)
         if st.button("Logout"):
             st.session_state.user_session = None
             st.session_state.encryption_key = None
@@ -204,20 +186,46 @@ else:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
     
-    if chat_prompt := st.chat_input("Start a new chat..."):
-        st.session_state.messages.append({"role": "user", "content": chat_prompt})
-        save_message(st.session_state.conversation_id, "user", chat_prompt, user_id, encryption_key)
+    # ▼▼▼ THIS IS THE CORRECTED SECTION ▼▼▼
+    if prompt_data := st.chat_input("Start a new chat or upload a file...", accept_file=True):
         
-        with st.spinner("Thinking..."):
+        user_text = prompt_data["text"]
+        uploaded_files = prompt_data["files"]
+        
+        # This is the full content that gets saved and sent to the AI
+        final_prompt_for_ai = user_text
+        # This is what gets displayed in the chat history for the user
+        display_prompt = user_text
+
+        if uploaded_files:
             try:
-                SYSTEM_PROMPT = load_prompt(st.session_state.language)
-                api_request_messages = [{"role": "user" if msg["role"] == "user" else "model", "parts": [msg["content"]]} for msg in st.session_state.messages]
-                full_history = [{"role": "user", "parts": [SYSTEM_PROMPT]}, {"role": "model", "parts": ["Understood. I am ready to act as your strategic partner. How can I help you today?"]},] + api_request_messages
-                response = model.generate_content(full_history)
-                response_text = response.text
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
-                save_message(st.session_state.conversation_id, "assistant", response_text, user_id, encryption_key)
+                uploaded_file = uploaded_files[0]
+                file_content = uploaded_file.getvalue().decode("utf-8")
+                final_prompt_for_ai = f"Instruction: {user_text}\n\nDocument:\n---\n{file_content}"
+                display_prompt = f"**Instruction for `{uploaded_file.name}`:**\n{user_text}"
             except Exception as e:
-                st.error(f"An error occurred with the Gemini API: {e}")
-        
-        st.rerun()
+                st.error(f"Error reading file: {e}")
+                final_prompt_for_ai = None
+
+        if final_prompt_for_ai:
+            st.session_state.messages.append({"role": "user", "content": display_prompt})
+            save_message(st.session_state.conversation_id, "user", final_prompt_for_ai, user_id, encryption_key)
+
+            with st.spinner("Thinking..."):
+                try:
+                    # Prepare history for AI, ensuring the last message has the full file content
+                    ai_request_messages = st.session_state.messages[:-1] + [{"role": "user", "content": final_prompt_for_ai}]
+                    
+                    api_request_parts = [{"role": "user" if msg["role"] == "user" else "model", "parts": [msg["content"]]} for msg in ai_request_messages]
+                    SYSTEM_PROMPT = load_prompt(st.session_state.language)
+                    full_history = [{"role": "user", "parts": [SYSTEM_PROMPT]}, {"role": "model", "parts": ["Understood."]},] + api_request_parts
+                    
+                    response = model.generate_content(full_history)
+                    response_text = response.text
+                    
+                    st.session_state.messages.append({"role": "assistant", "content": response_text})
+                    save_message(st.session_state.conversation_id, "assistant", response_text, user_id, encryption_key)
+                except Exception as e:
+                    st.error(f"An error occurred with the Gemini API: {e}")
+            
+            st.rerun()
