@@ -1,0 +1,11 @@
+The following is a full conversation and my previous summary of it.
+Based on the latest additions to the conversation, please correct any discrepancies in the previous summary and generate a new, more accurate summary that captures the user's true "Why/What/How".
+You must respond in the following JSON format.
+
+--- PREVIOUS SUMMARY ---
+{previous_summary}
+
+--- FULL CONVERSATION ---
+{conversation_text}
+
+--- NEW SUMMARY (JSON FORMAT) ---
