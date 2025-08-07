@@ -1,10 +1,11 @@
 ---
 id: DEC-DE-20250808-999
-date: 最新            # ← 相対表現
+date: 2025-08-08
 project: DE
 title: "Gate fail demo"
 status: draft
-sources: []           # ← citation なし
+sources:
+  - https://example.com/20250808
 ---
 ## Dummy
 Just testing Immune Gate.
