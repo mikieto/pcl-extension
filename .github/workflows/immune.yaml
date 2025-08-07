@@ -1,0 +1,6 @@
+name: Immune Gate
+on: pull_request
+jobs:
+  gate:
+    uses: mikieto/jibun-os/.github/workflows/immune_gate.yml@main
+    secrets: inherit
